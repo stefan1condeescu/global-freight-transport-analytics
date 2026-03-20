@@ -1,6 +1,8 @@
 import pandas as pd
 import numpy as np
 import streamlit as st
+import plotly.express as px
+from altair import BoxPlot
 
 st.set_page_config(layout="wide")
 
@@ -10,6 +12,8 @@ st.title("Analiza privind transportul de mǎrfuri aerian în raport cu cel ferov
 df=pd.read_csv("date_transport_work.csv")
 st.header("1. Vizualizarea setului de date")
 st.dataframe(df.head(20))
+
+#---------TRATAREA VALORILOR LIPSA------------
 
 #gasim coloanele cu valori lipsa si afisam numarul valorilor lipsa din fiecare
 st.header("2. Identificarea valorilor lipsa")
@@ -45,7 +49,7 @@ else:
     st.write("Randurile unde lipsesc valori pentru coloana selectata:")
     st.dataframe(df[df[col_selected].isnull()])
 
-st.header("3. Tratarea valorilor lipsa")
+st.header("Tratarea valorilor lipsa")
 #modurile de tratare disponibile in functie de tipul de variabile:
 #pentru variabile numerice: media, mediana, forward fill, backward fill
 #pentru variabile categoriale: moda / "Necunoscut"
@@ -144,3 +148,81 @@ st.download_button(
     file_name="date_transport_curatat.csv",
     mime="text/csv"
 )
+
+
+#------TRATAREA VALORILOR EXTREME----------
+st.header("3. Identificarea valorilor extreme")
+
+# coloanele numerice relevante pentru analiza
+coloane_outlieri = [
+    "Air transport, freight (million ton-km)",
+    "Railways, goods transported (million ton-km)",
+    "GDP (current US$)",
+    "Population, total"
+]
+
+st.subheader("Analiza outlierilor cu metoda IQR")
+#pastram doar coloanele care exista efectiv in setul de date
+coloane_outlieri = [col for col in coloane_outlieri if col in df_tratat.columns]
+
+col_outlier = st.selectbox(
+    "Alege coloana pentru analiza outlierilor:",
+    coloane_outlieri
+)
+
+#calcul IQR
+Q1 = df_tratat[col_outlier].quantile(0.25)
+Q3 = df_tratat[col_outlier].quantile(0.75)
+IQR = Q3 - Q1
+
+limita_inf = Q1 - 1.5 * IQR
+limita_sup = Q3 + 1.5 * IQR
+
+#identificare outlieri
+outlieri = df_tratat[(df_tratat[col_outlier] < limita_inf) | (df_tratat[col_outlier] > limita_sup) ]
+
+nr_outlieri = len(outlieri)
+procent_outlieri = round(nr_outlieri / len(df_tratat) * 100, 2)
+
+st.subheader("Rezultatele identificarii outlierilor")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    st.metric("Limita inferioara", f"{limita_inf:,.0f}")
+    st.metric("Numar outlieri", nr_outlieri)
+
+with col2:
+    st.metric("Limita superioara", f"{limita_sup:,.0f}")
+    st.metric("Procent outlieri", f"{procent_outlieri:.2f}%")
+
+st.write("Randurile identificate ca outlieri:")
+st.dataframe(outlieri)
+
+#cream grafice de tip boxplot si histogram pentru o vizualizare mai clara a valorilor extreme
+
+st.subheader("Vizualizarea outlierilor prin intermediul graficelor BoxPlot si Histogram")
+
+col1, col2 = st.columns(2)
+
+with col1:
+    fig_box = px.box(
+        df_tratat,
+        y=col_outlier,
+        title=f"Boxplot pentru {col_outlier} (log scale)"
+    )
+
+    fig_box.update_yaxes(type="log")
+
+    st.plotly_chart(fig_box, use_container_width=True)
+with col2:
+    fig_hist = px.histogram(
+        df_tratat,
+        x=col_outlier,
+        nbins=30,
+        title=f"Histograma pentru {col_outlier}"
+    )
+    fig_hist.update_layout(height=400)
+    st.plotly_chart(fig_hist, use_container_width=True)
+
+
