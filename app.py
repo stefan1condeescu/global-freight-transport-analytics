@@ -132,7 +132,7 @@ else:
         })
     )
 
-with st.expander("Afiseaza datasetul dupa tratare"):
+with st.expander("Afiseaza setul de date dupa tratare"):
     st.dataframe(df_tratat)
 
 #putem salva setul de date prelucrat:
