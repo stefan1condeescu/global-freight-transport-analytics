@@ -50,3 +50,4 @@ df_work = pd.merge(df_work, df_meta, left_on='Country Code', right_on='Code', ho
 df_work = df_work.drop(columns=['Code', "Country Code"])
 
 df_work.to_csv('date_transport_work.csv', index=False)
+
