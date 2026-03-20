@@ -18,7 +18,7 @@ missing_values=df.isnull().sum()
 #pastram doar coloanele care au valori lipsa
 missing_values=missing_values[missing_values > 0]
 if missing_values.empty:
-    st.success("Nu exista valori lipsa in dataset.")
+    st.success("Nu exista valori lipsa in setul de date.")
 else:
     st.warning(f"Au fost gasite {len(missing_values)} coloane cu valori lipsa.")
 
@@ -30,27 +30,22 @@ else:
         })
     )
 
-#tratam valorile lipsa in functie de tipul variabilelor
-st.header("3. Tratarea valorilor lipsa")
-
-#permitem utilizatorului sa selecteze o coloana si sa vada cate valori lipsa are
+#vizualizam randurile unde lipsesc valori
+st.subheader("Vizualizare randuri cu valori lipsa")
 if missing_values.empty:
     st.info("Nu exista coloane cu valori lipsa pentru analiza.")
 else:
-    st.subheader("Analiza unei coloane cu valori lipsă")
     col_missing = list(missing_values.index)
 
     col_selected = st.selectbox(
-        "Alege o coloana pentru analiza:",
+        "Alege o coloana pentru vizualizare:",
         col_missing,
     )
 
-    st.write("Tipul coloanei:", df[col_selected].dtype)
-    st.write("Numarul valorilor lipsă:", df[col_selected].isnull().sum())
+    st.write("Randurile unde lipsesc valori pentru coloana selectata:")
+    st.dataframe(df[df[col_selected].isnull()])
 
-    st.write("Randurile unde lipsesc valori:")
-    st.dataframe(df[df[col_selected].isnull()].head(10))
-
+st.header("3. Tratarea valorilor lipsa")
 #modurile de tratare disponibile in functie de tipul de variabile:
 #pentru variabile numerice: media, mediana, forward fill, backward fill
 #pentru variabile categoriale: moda / "Necunoscut"
@@ -81,7 +76,6 @@ else:
     """)
 
 #aplicam modul de tratare eficient in cazul nostru:
-
 # cream o copie a setului de date
 df_tratat = df.copy()
 
