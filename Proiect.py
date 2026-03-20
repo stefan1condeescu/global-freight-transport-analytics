@@ -47,6 +47,7 @@ df_meta = df_meta[['Code', 'Region', 'Income Group']]
 df_work = pd.merge(df_work, df_meta, left_on='Country Code', right_on='Code', how='left')
 
 # stergem coloana 'Code' care e duplicat acum si 'Country Code' pt ca nu avem nevoie de ea
+
 df_work = df_work.drop(columns=['Code', "Country Code"])
 
 df_work.to_csv('date_transport_work.csv', index=False)

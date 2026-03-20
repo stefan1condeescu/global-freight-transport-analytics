@@ -4,6 +4,7 @@ import streamlit as st
 import plotly.express as px
 from altair import BoxPlot
 from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
 
 
 st.set_page_config(layout="wide")
@@ -302,3 +303,56 @@ if coloane_selectate:
 
 else:
     st.warning("Selecteaza cel putin o coloana.")
+
+#----SCALAREA DATELOR-----
+
+st.header("5. Metode de scalare")
+
+coloane_numerice_scalare = [
+    "Air transport, freight (million ton-km)",
+    "Railways, goods transported (million ton-km)",
+    "GDP (current US$)",
+    "Population, total"
+]
+
+coloane_numerice_scalare = [col for col in coloane_numerice_scalare if col in df_tratat.columns]
+
+st.subheader("Coloane numerice disponibile pentru scalare")
+st.write(", ".join(coloane_numerice_scalare))
+
+coloane_selectate_scalare = st.multiselect(
+    "Alege coloanele pe care vrei sa le scalezi:",
+    coloane_numerice_scalare,
+    default=coloane_numerice_scalare
+)
+
+metoda_scalare = st.selectbox(
+    "Alege metoda de scalare:",
+    ["StandardScaler", "MinMaxScaler"]
+)
+
+if coloane_selectate_scalare:
+    df_scalat = df_tratat.copy()
+
+    if metoda_scalare == "StandardScaler":
+        scaler = StandardScaler()
+    else:
+        scaler = MinMaxScaler()
+
+    df_scalat[coloane_selectate_scalare] = scaler.fit_transform(df_scalat[coloane_selectate_scalare])
+
+    st.subheader("Rezultatele scalarii")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.write("Date inainte de scalare:")
+        st.dataframe(df_tratat[coloane_selectate_scalare].head(10))
+
+    with col2:
+        st.write("Date dupa scalare:")
+        st.dataframe(df_scalat[coloane_selectate_scalare].head(10))
+
+else:
+    st.warning("Selecteaza cel putin o coloana pentru scalare.")
+
