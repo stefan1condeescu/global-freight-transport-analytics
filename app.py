@@ -3,6 +3,8 @@ import numpy as np
 import streamlit as st
 import plotly.express as px
 from altair import BoxPlot
+from sklearn.preprocessing import LabelEncoder
+
 
 st.set_page_config(layout="wide")
 
@@ -226,3 +228,77 @@ with col2:
     st.plotly_chart(fig_hist, use_container_width=True)
 
 
+#-----CODIFICAREA VARIABILELOR CATEGORIALE------
+
+st.header("4. Codificarea variabilelor categoriale")
+
+#identificam coloanele categoriale
+coloane_categorice = df_tratat.select_dtypes(include=["object"]).columns.tolist()
+
+#excludem coloanele pe care nu vrem sa le codificam
+#Country Name este un identificator, nu o variabila explicativa, astfel codificarea acesteia nu ar aduce informatie relevanta pt modele sau analiza statistica
+coloane_excluse = ["Country Name"]
+coloane_categorice = [col for col in coloane_categorice if col not in coloane_excluse]
+
+st.subheader("Coloane categoriale disponibile")
+if coloane_categorice:
+    st.write(coloane_categorice)
+else:
+    st.info("Nu exista coloane categoriale disponibile.")
+
+#alegerea coloanelor
+coloane_selectate = st.multiselect(
+    "Alege coloanele pentru codificare:",
+    coloane_categorice,
+    default=coloane_categorice
+)
+
+#alegerea metodei
+metoda_codificare = st.selectbox(
+    "Alege metoda de codificare:",
+    ["One-Hot Encoding", "Label Encoding"]
+)
+
+from sklearn.preprocessing import LabelEncoder
+
+if coloane_selectate:
+    df_codificat = df_tratat.copy()
+
+    if metoda_codificare == "One-Hot Encoding":
+        df_codificat = pd.get_dummies(
+            df_codificat,
+            columns=coloane_selectate,
+            drop_first=False
+        )
+
+    elif metoda_codificare == "Label Encoding":
+        le = LabelEncoder()
+        for col in coloane_selectate:
+            df_codificat[col] = le.fit_transform(df_codificat[col].astype(str))
+
+    #rezultate
+    st.subheader("Rezultatul codificarii")
+
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.metric("Nr. coloane initial", df_tratat.shape[1])
+
+    with col2:
+        st.metric("Nr. coloane dupa codificare", df_codificat.shape[1])
+
+    st.write("Primele randuri:")
+    st.dataframe(df_codificat.head(20))
+
+    #descarcare
+    csv_codificat = df_codificat.to_csv(index=False).encode("utf-8")
+
+    st.download_button(
+        label="Descarca setul de date codificat",
+        data=csv_codificat,
+        file_name="date_transport_codificat.csv",
+        mime="text/csv"
+    )
+
+else:
+    st.warning("Selecteaza cel putin o coloana.")
