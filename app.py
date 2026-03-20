@@ -356,3 +356,33 @@ if coloane_selectate_scalare:
 else:
     st.warning("Selecteaza cel putin o coloana pentru scalare.")
 
+#-----PRELUCRARI STATISTICE, GRUPARI SI AGREGARI DE DATE
+st.header("6. Prelucrari statistice, grupari si agregari pe date")
+
+#1.prelucrari statistice: count, mean, std, min, max, mediana
+st.subheader("A. Statistici descriptive generale")
+coloane_numerice = [
+    "Air transport, freight (million ton-km)",
+    "Railways, goods transported (million ton-km)",
+    "GDP (current US$)",
+    "Population, total"
+]
+
+# pastram doar coloanele care exista in setul de date
+coloane_numerice = [col for col in coloane_numerice if col in df_tratat.columns]
+
+if coloane_numerice:
+    statistici = df_tratat[coloane_numerice].describe().T.round(2)
+    st.dataframe(statistici)
+else:
+    st.info("Nu exista coloane numerice disponibile pentru analiza.")
+
+#2.grupare si agregare pe date - pe an
+st.subheader("B. Evolutia in timp a transportului de marfuri")
+
+
+#3.grupare si agregare pe date - pe region
+st.subheader("C. Agregare pe regiuni")
+
+#4.grupare si agregare pe date - pe income group
+st.subheader("D. Agregare pe grupe de venit")
