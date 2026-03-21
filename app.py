@@ -608,9 +608,26 @@ acuratete = accuracy_score(y_log, y_pred_log)
 st.write(f"**Acuratetea modelului:** {acuratete:.4f}")
 st.write("Interpretare: Modelul ghiceste corect daca o tara este Hub in " + f"{acuratete*100:.2f}% din cazuri.")
 
+st.write("**Matricea de Confuzie**")
 conf_matrix = confusion_matrix(y_log, y_pred_log)
-st.write("**Matricea de Confuzie:**")
-st.write(conf_matrix)
+
+fig_matrix = px.imshow(
+    conf_matrix,
+    text_auto=True,
+    aspect="auto",
+    labels=dict(x="Predicție Model", y="Realitate (Date)"),
+    x=['Non-Hub', 'Hub'],
+    y=['Non-Hub', 'Hub'],
+    color_continuous_scale='Blues',
+    title="Distributia Predictiilor: Hub vs Non-Hub"
+)
+
+fig_matrix.update_layout(
+    xaxis_title="Ce a crezut Modelul",
+    yaxis_title="Ce este în Realitate"
+)
+
+st.plotly_chart(fig_matrix, use_container_width=True)
 
 from sklearn.metrics import classification_report
 
