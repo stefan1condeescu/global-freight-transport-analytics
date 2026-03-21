@@ -368,7 +368,7 @@ coloane_numerice = [
     "Population, total"
 ]
 
-# pastram doar coloanele care exista in setul de date
+#pastram doar coloanele care exista in setul de date
 coloane_numerice = [col for col in coloane_numerice if col in df_tratat.columns]
 
 if coloane_numerice:
@@ -379,10 +379,48 @@ else:
 
 #2.grupare si agregare pe date - pe an
 st.subheader("B. Evolutia in timp a transportului de marfuri")
+if "An" in df_tratat.columns:
+    agregare_an = df_tratat.groupby("An").agg({
+        "Air transport, freight (million ton-km)": "mean",
+        "Railways, goods transported (million ton-km)": "mean",
+        "GDP (current US$)": "mean",
+        "Population, total": "mean"
+    }).round(2)
 
+    st.write("Valorile medii anuale pentru principalii indicatori:")
+    st.dataframe(agregare_an)
+
+    st.line_chart(
+        agregare_an[[
+            "Air transport, freight (million ton-km)",
+            "Railways, goods transported (million ton-km)"
+        ]]
+    )
+else:
+    st.info("Nu exista coloana 'An' in setul de date.")
 
 #3.grupare si agregare pe date - pe region
-st.subheader("C. Agregare pe regiuni")
+st.subheader("C. Comparatia indicatorilor pe regiuni geografice")
 
-#4.grupare si agregare pe date - pe income group
-st.subheader("D. Agregare pe grupe de venit")
+if "Region" in df_tratat.columns:
+    agregare_regiune = df_tratat.groupby("Region").agg({
+        "Air transport, freight (million ton-km)": "mean",
+        "Railways, goods transported (million ton-km)": "mean",
+        "GDP (current US$)": "mean",
+        "Population, total": "mean"
+    }).round(2)
+
+    st.write("Valorile medii ale principalilor indicatori, pe regiuni:")
+    st.dataframe(agregare_regiune)
+
+    st.write("Comparatia dintre regiunile geografice pentru transportul aerian si feroviar:")
+    st.bar_chart(
+        agregare_regiune[[
+            "Air transport, freight (million ton-km)",
+            "Railways, goods transported (million ton-km)"
+        ]]
+    )
+else:
+    st.info("Nu exista coloana 'Region' in setul de date.")
+
+
