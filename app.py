@@ -16,7 +16,7 @@ df=pd.read_csv("date_transport_work.csv")
 st.header("1. Vizualizarea setului de date")
 st.dataframe(df.head(20))
 
-#---------TRATAREA VALORILOR LIPSA------------
+### TRATAREA VALORILOR LIPSA
 
 #gasim coloanele cu valori lipsa si afisam numarul valorilor lipsa din fiecare
 st.header("2. Identificarea valorilor lipsa")
@@ -153,7 +153,8 @@ st.download_button(
 )
 
 
-#------TRATAREA VALORILOR EXTREME----------
+### TRATAREA VALORILOR EXTREME
+
 st.header("3. Identificarea valorilor extreme")
 
 # coloanele numerice relevante pentru analiza
@@ -178,7 +179,7 @@ Q1 = df_tratat[col_outlier].quantile(0.25)
 Q3 = df_tratat[col_outlier].quantile(0.75)
 IQR = Q3 - Q1
 
-limita_inf = Q1 - 1.5 * IQR
+limita_inf = max(0, Q1 - 1.5 * IQR)
 limita_sup = Q3 + 1.5 * IQR
 
 #identificare outlieri
@@ -229,7 +230,7 @@ with col2:
     st.plotly_chart(fig_hist, use_container_width=True)
 
 
-#-----CODIFICAREA VARIABILELOR CATEGORIALE------
+### CODIFICAREA VARIABILELOR CATEGORIALE
 
 st.header("4. Codificarea variabilelor categoriale")
 
@@ -304,7 +305,7 @@ if coloane_selectate:
 else:
     st.warning("Selecteaza cel putin o coloana.")
 
-#----SCALAREA DATELOR-----
+### SCALAREA DATELOR
 
 st.header("5. Metode de scalare")
 
@@ -356,7 +357,8 @@ if coloane_selectate_scalare:
 else:
     st.warning("Selecteaza cel putin o coloana pentru scalare.")
 
-#-----PRELUCRARI STATISTICE, GRUPARI SI AGREGARI DE DATE
+### PRELUCRARI STATISTICE, GRUPARI SI AGREGARI DE DATE
+
 st.header("6. Prelucrari statistice, grupari si agregari pe date")
 
 #1.prelucrari statistice: count, mean, std, min, max, mediana
@@ -423,7 +425,8 @@ if "Region" in df_tratat.columns:
 else:
     st.info("Nu exista coloana 'Region' in setul de date.")
 
-#------FILTRARE SI SORTARE----------
+### FILTRARE SI SORTARE
+
 st.header("7. Filtrare si sortare dupa transportul aerian de marfa")
 
 df_filtrat = df_tratat.copy()
@@ -449,7 +452,7 @@ df_filtrat = df_filtrat[
 #sortare
 ordine = st.radio(
     "Alege ordinea:",
-    ["Descrescator ", "Crescator"]
+    ["Descrescator", "Crescator"]
 )
 
 if ordine == "Descrescator":
@@ -466,3 +469,28 @@ else:
 #afisare
 st.write(f"Numar observatii: {len(df_filtrat)}")
 st.dataframe(df_filtrat.head(20))
+
+### FUNCTII DE GRUP SI ANALIZA COTELOR DE PIATA
+
+st.header("8. Analiza cotelor de piata pe regiuni (Functii de grup)")
+
+# cream o copie pentru analiza
+df_group = df_tratat.copy()
+
+# calculam totalul pe regiune si an folosind transform('sum')
+df_group['Total_Regiune_An'] = df_group.groupby(['Region', 'An'])['Air transport, freight (million ton-km)'].transform('sum')
+
+# calculam ponderea % fiecarei tari in totalul regiunii sale
+df_group['Pondere_in_Regiune'] = (df_group['Air transport, freight (million ton-km)'] / df_group['Total_Regiune_An'] * 100).round(2)
+
+an_selectat = st.selectbox("Selecteaza anul pentru analiza cotelor de piata:", sorted(df_group['An'].unique(), reverse=True))
+
+df_an = df_group[df_group['An'] == an_selectat].sort_values(by='Pondere_in_Regiune', ascending=False)
+
+st.write(f"Topul tarilor cu cea mai mare influenta in transportul aerian regional in anul {an_selectat}:")
+st.dataframe(df_an[['Country Name', 'Region', 'Air transport, freight (million ton-km)', 'Pondere_in_Regiune']].head(10))
+
+fig_share = px.bar(df_an.head(15), x='Country Name', y='Pondere_in_Regiune', color='Region',
+                   title="Cota de piata a tarilor in cadrul regiunii lor (%)")
+st.plotly_chart(fig_share, use_container_width=True)
+
