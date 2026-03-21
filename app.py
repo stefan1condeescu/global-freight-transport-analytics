@@ -494,3 +494,53 @@ fig_share = px.bar(df_an.head(15), x='Country Name', y='Pondere_in_Regiune', col
                    title="Cota de piata a tarilor in cadrul regiunii lor (%)")
 st.plotly_chart(fig_share, use_container_width=True)
 
+
+### CLUSTERIZAREA TARILOR
+
+
+from sklearn.cluster import KMeans
+
+st.header("9. Clusterizarea țărilor (K-Means)")
+
+# 1. definirea coloanelor pe care s-a facut scalarea la punctul 5
+cols_pentru_cluster = [
+    "Air transport, freight (million ton-km)",
+    "Railways, goods transported (million ton-km)",
+    "GDP (current US$)",
+    "Population, total"
+]
+
+# antrenam modelul folosind DF_SCALAT
+kmeans = KMeans(n_clusters=3, init='k-means++', random_state=42)
+# fit_predict intoarce grupul (0, 1 sau 2) pentru fiecare rând
+clustere = kmeans.fit_predict(df_scalat[cols_pentru_cluster])
+
+# adaugam eticheta clusterului in tabelul cu date REALE (df_tratat)
+# facem asta ca sa putem vedea numele tarii si PIB-ul real langa cluster
+df_tratat['Cluster'] = clustere
+
+# vizualizare pe date reale
+fig_cluster = px.scatter(
+    df_tratat,
+    x="GDP (current US$)",
+    y="Air transport, freight (million ton-km)",
+    color="Cluster",
+    hover_name="Country Name",
+    log_x=True, log_y=True,
+    title="Clusterizarea tarilor: Relatia dintre PIB si Transport Aerian"
+)
+
+st.plotly_chart(fig_cluster, use_container_width=True)
+
+# tabel simplu: se alege clusterul si apar toate tarile
+st.subheader("Exploreaza tarile din fiecare grup")
+cluster_ales = st.selectbox("Alege Clusterul pe care vrei sa il vezi (0, 1 sau 2):", [0, 1, 2])
+
+# filtram tabelul sa arate doar tarile din grupul selectat
+df_vizualizare = df_tratat[df_tratat['Cluster'] == cluster_ales]
+
+st.write(f"In Clusterul {cluster_ales} au fost gasite {len(df_vizualizare)} valori:")
+st.dataframe(df_vizualizare[['Country Name', 'Region', 'GDP (current US$)', 'Air transport, freight (million ton-km)']])
+
+
+
