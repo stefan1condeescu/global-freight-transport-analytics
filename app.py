@@ -423,4 +423,46 @@ if "Region" in df_tratat.columns:
 else:
     st.info("Nu exista coloana 'Region' in setul de date.")
 
+#------FILTRARE SI SORTARE----------
+st.header("7. Filtrare si sortare dupa transportul aerian de marfa")
 
+df_filtrat = df_tratat.copy()
+
+#valori min si max
+min_val = float(df_filtrat["Air transport, freight (million ton-km)"].min())
+max_val = float(df_filtrat["Air transport, freight (million ton-km)"].max())
+
+#slider
+interval = st.slider(
+    "Selecteaza intervalul transportului aerian (million ton-km):",
+    min_value=min_val,
+    max_value=max_val,
+    value=(1.0, max_val)
+)
+
+#filtrare
+df_filtrat = df_filtrat[
+    (df_filtrat["Air transport, freight (million ton-km)"] >= interval[0]) &
+    (df_filtrat["Air transport, freight (million ton-km)"] <= interval[1])
+]
+
+#sortare
+ordine = st.radio(
+    "Alege ordinea:",
+    ["Descrescator ", "Crescator"]
+)
+
+if ordine == "Descrescator":
+    df_filtrat = df_filtrat.sort_values(
+        by="Air transport, freight (million ton-km)",
+        ascending=False
+    )
+else:
+    df_filtrat = df_filtrat.sort_values(
+        by="Air transport, freight (million ton-km)",
+        ascending=True
+    )
+
+#afisare
+st.write(f"Numar observatii: {len(df_filtrat)}")
+st.dataframe(df_filtrat.head(20))
