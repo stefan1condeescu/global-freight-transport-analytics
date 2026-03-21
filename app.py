@@ -543,4 +543,88 @@ st.write(f"In Clusterul {cluster_ales} au fost gasite {len(df_vizualizare)} valo
 st.dataframe(df_vizualizare[['Country Name', 'Region', 'GDP (current US$)', 'Air transport, freight (million ton-km)']])
 
 
+### REGRESIE LINIARA MULTIPLA
 
+
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import r2_score, mean_squared_error
+
+st.header("10. Regresia Liniara Multipla")
+
+# X = cauzele (PIB, populație, feroviar)
+# y = efectul (transport aerian)
+cols_x = ["GDP (current US$)", "Population, total", "Railways, goods transported (million ton-km)"]
+X = df_scalat[cols_x]
+y = df_scalat['Air transport, freight (million ton-km)']
+
+# construim si antrenam modelul
+model_multi = LinearRegression()
+model_multi.fit(X, y)
+
+
+y_pred = model_multi.predict(X)
+r2 = r2_score(y, y_pred) # cat de bine explica variabilele din X transportul aerian
+
+st.write(f"**Coeficientul de determinare (R^2):** {r2:.4f}")
+
+st.subheader("Influenta fiecarui factor asupra transportului aerian")
+importanta = pd.DataFrame({
+    "Factor": ["PIB", "Populație", "Transport Feroviar"],
+    "Impact (Coeficient)": model_multi.coef_
+}).sort_values(by="Impact (Coeficient)", ascending=False)
+
+st.table(importanta)
+
+st.info("""
+**Interpretare:** - Un coeficient **pozitiv** inseamna ca, daca acel factor creste, si transportul aerian creste.
+- Valoarea R^2 ne spune ce procent din transportului aerian a fost explicat de cei 3 factori impreuna.
+""")
+
+
+### REGRESIE LOGISTICA
+
+
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, confusion_matrix
+
+st.header("11. Regresia Logistica: Predictia statutului de HUB")
+
+# cream variabila tinta (categorica)
+# hub = tara in top 25% la transportul aerian
+prag_hub = df_scalat['Air transport, freight (million ton-km)'].quantile(0.75)
+df_scalat['Este_Hub'] = (df_scalat['Air transport, freight (million ton-km)'] > prag_hub).astype(int)
+
+X_log = df_scalat[['GDP (current US$)', 'Population, total']]
+y_log = df_scalat['Este_Hub']
+
+# antrenam modelul
+model_log = LogisticRegression()
+model_log.fit(X_log, y_log)
+
+# predictia + acuratetea
+y_pred_log = model_log.predict(X_log)
+acuratete = accuracy_score(y_log, y_pred_log)
+
+st.write(f"**Acuratetea modelului:** {acuratete:.4f}")
+st.write("Interpretare: Modelul ghiceste corect daca o tara este Hub in " + f"{acuratete*100:.2f}% din cazuri.")
+
+conf_matrix = confusion_matrix(y_log, y_pred_log)
+st.write("**Matricea de Confuzie:**")
+st.write(conf_matrix)
+
+from sklearn.metrics import classification_report
+
+with st.expander("Vezi Raportul de Clasificare Detaliat"):
+    # raportul sub forma de dictionar
+    report_dict = classification_report(y_log, y_pred_log, output_dict=True)
+    report_df = pd.DataFrame(report_dict).transpose()
+
+    st.write("Statistici de performanta (Precision, Recall, F1-Score):")
+    st.table(report_df.round(2))
+
+    st.info("""
+    **Ce înseamna acesti termeni?**
+    - **Precision:** Cat de sigur este modelul cand zice ca o tara e HUB.
+    - **Recall:** Cate dintre hub-urile reale a reusit modelul sa gaseasca.
+    - **F1-Score:** Media dintre Precision si Recall (nota finala a modelului pe acea grupa).
+    """)
