@@ -1,647 +1,600 @@
 import pandas as pd
-import numpy as np
-import streamlit as st
 import plotly.express as px
-from altair import BoxPlot
-from sklearn.preprocessing import LabelEncoder
-from sklearn.preprocessing import StandardScaler, MinMaxScaler
+import streamlit as st
+from sklearn.cluster import KMeans
+from sklearn.linear_model import LinearRegression, LogisticRegression
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix, r2_score
+from sklearn.preprocessing import LabelEncoder, MinMaxScaler, StandardScaler
 
 
-st.set_page_config(layout="wide")
+DATA_FILE = "processed_transport_data.csv"
 
-st.title("Analiza privind transportul de mǎrfuri aerian în raport cu cel feroviar, PIB şi populația")
+AIR_FREIGHT = "Air transport, freight (million ton-km)"
+RAIL_FREIGHT = "Railways, goods transported (million ton-km)"
+GDP = "GDP (current US$)"
+POPULATION = "Population, total"
 
-#citim si vizualizam setul de date
-df=pd.read_csv("date_transport_work.csv")
-st.header("1. Vizualizarea setului de date")
-st.dataframe(df.head(20))
+NUMERIC_ANALYSIS_COLUMNS = [AIR_FREIGHT, RAIL_FREIGHT, GDP, POPULATION]
+MISSING_VALUE_COLUMNS = [AIR_FREIGHT, RAIL_FREIGHT]
 
-### TRATAREA VALORILOR LIPSA
 
-#gasim coloanele cu valori lipsa si afisam numarul valorilor lipsa din fiecare
-st.header("2. Identificarea valorilor lipsa")
-missing_values=df.isnull().sum()
-
-#pastram doar coloanele care au valori lipsa
-missing_values=missing_values[missing_values > 0]
-if missing_values.empty:
-    st.success("Nu exista valori lipsa in setul de date.")
-else:
-    st.warning(f"Au fost gasite {len(missing_values)} coloane cu valori lipsa.")
-
-    st.dataframe(
-        pd.DataFrame({
-            "Coloana":missing_values.index,
-            "Numar valori lipsa":missing_values.values,
-            "Procent": (missing_values.values/len(df)*100).round(2)
-        })
-    )
-
-#vizualizam randurile unde lipsesc valori
-st.subheader("Vizualizare randuri cu valori lipsa")
-if missing_values.empty:
-    st.info("Nu exista coloane cu valori lipsa pentru analiza.")
-else:
-    col_missing = list(missing_values.index)
-
-    col_selected = st.selectbox(
-        "Alege o coloana pentru vizualizare:",
-        col_missing,
-    )
-
-    st.write("Randurile unde lipsesc valori pentru coloana selectata:")
-    st.dataframe(df[df[col_selected].isnull()])
-
-st.header("Tratarea valorilor lipsa")
-#modurile de tratare disponibile in functie de tipul de variabile:
-#pentru variabile numerice: media, mediana, forward fill, backward fill
-#pentru variabile categoriale: moda / "Necunoscut"
-#pentru putine valori lipsa: se pot sterge randurile afectate
-
-st.subheader("Moduri de tratare disponibile in functie de tipul variabilei")
-
-tip_selectat = st.radio(
-    "Alege tipul variabilei:",
-    ["Numerice", "Categoriale"]
+st.set_page_config(page_title="Global Freight Transport Analytics", layout="wide")
+st.title("Global Freight Transport Analytics")
+st.caption(
+    "Interactive Streamlit dashboard for exploring air freight, rail freight, GDP, "
+    "population, regions, and income groups."
 )
 
-if tip_selectat == "Numerice":
-    st.write("Pentru variabile numerice, putem folosi urmatoarele metode:")
-    st.markdown("""
-    - **Media** – potrivita cand valorile sunt distribuite relativ uniform  
-    - **Mediana** – potrivita cand exista valori extreme  
-    - **Forward fill** – completeaza cu valoarea anterioara  
-    - **Backward fill** – completeaza cu valoarea urmatoare  
-    - **Stergerea randurilor** – doar daca numarul valorilor lipsa este foarte mic  
-    """)
+
+@st.cache_data
+def load_transport_data() -> pd.DataFrame:
+    return pd.read_csv(DATA_FILE)
+
+
+def build_scaler(method: str):
+    if method == "StandardScaler":
+        return StandardScaler()
+    return MinMaxScaler()
+
+
+df = load_transport_data()
+
+st.header("1. Dataset Preview")
+st.dataframe(df.head(20), use_container_width=True)
+
+
+st.header("2. Missing Value Analysis")
+missing_values = df.isnull().sum()
+missing_values = missing_values[missing_values > 0]
+
+if missing_values.empty:
+    st.success("No missing values were found in the dataset.")
 else:
-    st.write("Pentru variabile categoriale, putem folosi urmatoarele metode:")
-    st.markdown("""
-    - **Moda** – completeaza cu cea mai frecventa valoare  
-    - **'Necunoscut'** – util cand nu vrem sa presupunem o categorie  
-    - **Stergerea randurilor** – doar daca lipsesc foarte putine valori  
-    """)
-
-#aplicam modul de tratare eficient in cazul nostru:
-# cream o copie a setului de date
-df_tratat = df.copy()
-
-# ordonam datele dupa tara si an
-df_tratat = df_tratat.sort_values(by=["Country Name", "An"])
-
-# coloanele numerice cu valori lipsa
-coloane_de_tratat = [
-    "Air transport, freight (million ton-km)",
-    "Railways, goods transported (million ton-km)"
-]
-
-# aplicam forward fill si backward fill in cadrul fiecarei tari
-for col in coloane_de_tratat:
-    df_tratat[col] = df_tratat.groupby("Country Name")[col].ffill()
-    df_tratat[col] = df_tratat.groupby("Country Name")[col].bfill()
-
-# daca mai raman valori lipsa, completam cu mediana coloanei
-for col in coloane_de_tratat:
-    df_tratat[col] = df_tratat[col].fillna(df_tratat[col].median())
-
-#verificam setul de date dupa tratare
-st.subheader("Verificarea valorilor lipsa dupa tratare")
-
-missing_after = df_tratat.isnull().sum()
-missing_after = missing_after[missing_after > 0]
-
-if missing_after.empty:
-    st.success("Toate valorile lipsa au fost tratate cu succes.")
-else:
-    st.warning("Mai exista valori lipsa in urmatoarele coloane:")
+    st.warning(f"{len(missing_values)} columns contain missing values.")
     st.dataframe(
-        pd.DataFrame({
-            "Coloana": missing_after.index,
-            "Numar valori lipsa": missing_after.values
-        })
+        pd.DataFrame(
+            {
+                "Column": missing_values.index,
+                "Missing values": missing_values.values,
+                "Missing percentage": (missing_values.values / len(df) * 100).round(2),
+            }
+        ),
+        use_container_width=True,
     )
 
-st.subheader("Setul de date dupa tratarea valorilor lipsa")
-# verificam daca mai exista valori lipsa
-missing_after = df_tratat.isnull().sum()
-missing_after = missing_after[missing_after > 0]
-
-if missing_after.empty:
-    st.success("Nu mai exista valori lipsa in setul de date tratat.")
+st.subheader("Rows With Missing Values")
+if missing_values.empty:
+    st.info("There are no missing-value columns to inspect.")
 else:
-    st.warning("Mai exista valori lipsa in setul de date tratat.")
+    selected_missing_column = st.selectbox(
+        "Choose a column to inspect:",
+        list(missing_values.index),
+    )
+    st.write("Rows where the selected column is missing:")
+    st.dataframe(df[df[selected_missing_column].isnull()], use_container_width=True)
 
-    st.dataframe(
-        pd.DataFrame({
-            "Coloana": missing_after.index,
-            "Numar valori lipsa": missing_after.values,
-            "Procent": (missing_after.values / len(df_tratat) * 100).round(2)
-        })
+st.header("Missing Value Treatment")
+st.subheader("Available Treatment Methods by Variable Type")
+
+variable_type = st.radio(
+    "Choose the variable type:",
+    ["Numerical", "Categorical"],
+)
+
+if variable_type == "Numerical":
+    st.write("For numerical variables, common treatment methods include:")
+    st.markdown(
+        """
+        - **Mean** - useful when values are distributed relatively evenly.
+        - **Median** - useful when extreme values are present.
+        - **Forward fill** - fills each missing value with the previous value.
+        - **Backward fill** - fills each missing value with the next value.
+        - **Row removal** - useful only when very few rows are affected.
+        """
+    )
+else:
+    st.write("For categorical variables, common treatment methods include:")
+    st.markdown(
+        """
+        - **Mode** - fills missing values with the most frequent category.
+        - **Unknown** - useful when no category should be assumed.
+        - **Row removal** - useful only when very few rows are affected.
+        """
     )
 
-with st.expander("Afiseaza setul de date dupa tratare"):
-    st.dataframe(df_tratat)
+cleaned_df = df.copy()
+cleaned_df = cleaned_df.sort_values(by=["Country Name", "Year"])
 
-#putem salva setul de date prelucrat:
-csv = df_tratat.to_csv(index=False).encode("utf-8")
+for column in MISSING_VALUE_COLUMNS:
+    cleaned_df[column] = cleaned_df.groupby("Country Name")[column].ffill()
+    cleaned_df[column] = cleaned_df.groupby("Country Name")[column].bfill()
 
+for column in MISSING_VALUE_COLUMNS:
+    cleaned_df[column] = cleaned_df[column].fillna(cleaned_df[column].median())
+
+st.subheader("Missing Values After Treatment")
+missing_after_treatment = cleaned_df.isnull().sum()
+missing_after_treatment = missing_after_treatment[missing_after_treatment > 0]
+
+if missing_after_treatment.empty:
+    st.success("All missing values were treated successfully.")
+else:
+    st.warning("The following columns still contain missing values:")
+    st.dataframe(
+        pd.DataFrame(
+            {
+                "Column": missing_after_treatment.index,
+                "Missing values": missing_after_treatment.values,
+                "Missing percentage": (
+                    missing_after_treatment.values / len(cleaned_df) * 100
+                ).round(2),
+            }
+        ),
+        use_container_width=True,
+    )
+
+with st.expander("Show cleaned dataset"):
+    st.dataframe(cleaned_df, use_container_width=True)
+
+cleaned_csv = cleaned_df.to_csv(index=False).encode("utf-8")
 st.download_button(
-    label="Descarca setul de date tratat",
-    data=csv,
-    file_name="date_transport_curatat.csv",
-    mime="text/csv"
+    label="Download cleaned dataset",
+    data=cleaned_csv,
+    file_name="cleaned_transport_data.csv",
+    mime="text/csv",
 )
 
 
-### TRATAREA VALORILOR EXTREME
-
-st.header("3. Identificarea valorilor extreme")
-
-# coloanele numerice relevante pentru analiza
-coloane_outlieri = [
-    "Air transport, freight (million ton-km)",
-    "Railways, goods transported (million ton-km)",
-    "GDP (current US$)",
-    "Population, total"
+st.header("3. Outlier Detection")
+available_outlier_columns = [
+    column for column in NUMERIC_ANALYSIS_COLUMNS if column in cleaned_df.columns
 ]
 
-st.subheader("Analiza outlierilor cu metoda IQR")
-#pastram doar coloanele care exista efectiv in setul de date
-coloane_outlieri = [col for col in coloane_outlieri if col in df_tratat.columns]
-
-col_outlier = st.selectbox(
-    "Alege coloana pentru analiza outlierilor:",
-    coloane_outlieri
+st.subheader("IQR-Based Outlier Analysis")
+selected_outlier_column = st.selectbox(
+    "Choose a column for outlier analysis:",
+    available_outlier_columns,
 )
 
-#calcul IQR
-Q1 = df_tratat[col_outlier].quantile(0.25)
-Q3 = df_tratat[col_outlier].quantile(0.75)
-IQR = Q3 - Q1
+q1 = cleaned_df[selected_outlier_column].quantile(0.25)
+q3 = cleaned_df[selected_outlier_column].quantile(0.75)
+iqr = q3 - q1
 
-limita_inf = max(0, Q1 - 1.5 * IQR)
-limita_sup = Q3 + 1.5 * IQR
+lower_limit = max(0, q1 - 1.5 * iqr)
+upper_limit = q3 + 1.5 * iqr
 
-#identificare outlieri
-outlieri = df_tratat[(df_tratat[col_outlier] < limita_inf) | (df_tratat[col_outlier] > limita_sup) ]
+outlier_rows = cleaned_df[
+    (cleaned_df[selected_outlier_column] < lower_limit)
+    | (cleaned_df[selected_outlier_column] > upper_limit)
+]
 
-nr_outlieri = len(outlieri)
-procent_outlieri = round(nr_outlieri / len(df_tratat) * 100, 2)
+outlier_count = len(outlier_rows)
+outlier_percentage = round(outlier_count / len(cleaned_df) * 100, 2)
 
-st.subheader("Rezultatele identificarii outlierilor")
+st.subheader("Outlier Detection Results")
+metric_col_1, metric_col_2 = st.columns(2)
 
-col1, col2 = st.columns(2)
+with metric_col_1:
+    st.metric("Lower limit", f"{lower_limit:,.0f}")
+    st.metric("Outlier count", outlier_count)
 
-with col1:
-    st.metric("Limita inferioara", f"{limita_inf:,.0f}")
-    st.metric("Numar outlieri", nr_outlieri)
+with metric_col_2:
+    st.metric("Upper limit", f"{upper_limit:,.0f}")
+    st.metric("Outlier percentage", f"{outlier_percentage:.2f}%")
 
-with col2:
-    st.metric("Limita superioara", f"{limita_sup:,.0f}")
-    st.metric("Procent outlieri", f"{procent_outlieri:.2f}%")
+with st.expander("Show rows identified as outliers"):
+    st.dataframe(outlier_rows, use_container_width=True)
 
-st.write("Randurile identificate ca outlieri:")
-st.dataframe(outlieri)
+st.subheader("Box Plot and Histogram")
+chart_col_1, chart_col_2 = st.columns(2)
 
-#cream grafice de tip boxplot si histogram pentru o vizualizare mai clara a valorilor extreme
-
-st.subheader("Vizualizarea outlierilor prin intermediul graficelor BoxPlot si Histogram")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    fig_box = px.box(
-        df_tratat,
-        y=col_outlier,
-        title=f"Boxplot pentru {col_outlier} (log scale)"
+with chart_col_1:
+    box_plot = px.box(
+        cleaned_df,
+        y=selected_outlier_column,
+        title=f"Box plot for {selected_outlier_column} (log scale)",
     )
+    box_plot.update_layout(height=330, margin=dict(l=10, r=10, t=55, b=10))
+    box_plot.update_yaxes(type="log")
+    st.plotly_chart(box_plot, use_container_width=True)
 
-    fig_box.update_yaxes(type="log")
-
-    st.plotly_chart(fig_box, use_container_width=True)
-with col2:
-    fig_hist = px.histogram(
-        df_tratat,
-        x=col_outlier,
+with chart_col_2:
+    histogram = px.histogram(
+        cleaned_df,
+        x=selected_outlier_column,
         nbins=30,
-        title=f"Histograma pentru {col_outlier}"
+        title=f"Histogram for {selected_outlier_column}",
     )
-    fig_hist.update_layout(height=400)
-    st.plotly_chart(fig_hist, use_container_width=True)
+    histogram.update_layout(height=330, margin=dict(l=10, r=10, t=55, b=10))
+    st.plotly_chart(histogram, use_container_width=True)
 
 
-### CODIFICAREA VARIABILELOR CATEGORIALE
+st.header("4. Categorical Variable Encoding")
+categorical_columns = cleaned_df.select_dtypes(include=["object"]).columns.tolist()
+excluded_categorical_columns = ["Country Name"]
+categorical_columns = [
+    column for column in categorical_columns if column not in excluded_categorical_columns
+]
 
-st.header("4. Codificarea variabilelor categoriale")
-
-#identificam coloanele categoriale
-coloane_categorice = df_tratat.select_dtypes(include=["object"]).columns.tolist()
-
-#excludem coloanele pe care nu vrem sa le codificam
-#Country Name este un identificator, nu o variabila explicativa, astfel codificarea acesteia nu ar aduce informatie relevanta pt modele sau analiza statistica
-coloane_excluse = ["Country Name"]
-coloane_categorice = [col for col in coloane_categorice if col not in coloane_excluse]
-
-st.subheader("Coloane categoriale disponibile")
-if coloane_categorice:
-    st.write(coloane_categorice)
+st.subheader("Available Categorical Columns")
+if categorical_columns:
+    st.write(categorical_columns)
 else:
-    st.info("Nu exista coloane categoriale disponibile.")
+    st.info("No categorical columns are available for encoding.")
 
-#alegerea coloanelor
-coloane_selectate = st.multiselect(
-    "Alege coloanele pentru codificare:",
-    coloane_categorice,
-    default=coloane_categorice
+selected_encoding_columns = st.multiselect(
+    "Choose columns to encode:",
+    categorical_columns,
+    default=categorical_columns,
 )
 
-#alegerea metodei
-metoda_codificare = st.selectbox(
-    "Alege metoda de codificare:",
-    ["One-Hot Encoding", "Label Encoding"]
+encoding_method = st.selectbox(
+    "Choose an encoding method:",
+    ["One-Hot Encoding", "Label Encoding"],
 )
 
-from sklearn.preprocessing import LabelEncoder
+if selected_encoding_columns:
+    encoded_df = cleaned_df.copy()
 
-if coloane_selectate:
-    df_codificat = df_tratat.copy()
-
-    if metoda_codificare == "One-Hot Encoding":
-        df_codificat = pd.get_dummies(
-            df_codificat,
-            columns=coloane_selectate,
-            drop_first=False
+    if encoding_method == "One-Hot Encoding":
+        encoded_df = pd.get_dummies(
+            encoded_df,
+            columns=selected_encoding_columns,
+            drop_first=False,
         )
+    else:
+        label_encoder = LabelEncoder()
+        for column in selected_encoding_columns:
+            encoded_df[column] = label_encoder.fit_transform(
+                encoded_df[column].astype(str)
+            )
 
-    elif metoda_codificare == "Label Encoding":
-        le = LabelEncoder()
-        for col in coloane_selectate:
-            df_codificat[col] = le.fit_transform(df_codificat[col].astype(str))
+    st.subheader("Encoding Result")
+    metric_col_1, metric_col_2 = st.columns(2)
 
-    #rezultate
-    st.subheader("Rezultatul codificarii")
+    with metric_col_1:
+        st.metric("Original column count", cleaned_df.shape[1])
 
-    col1, col2 = st.columns(2)
+    with metric_col_2:
+        st.metric("Encoded column count", encoded_df.shape[1])
 
-    with col1:
-        st.metric("Nr. coloane initial", df_tratat.shape[1])
+    st.write("First rows:")
+    st.dataframe(encoded_df.head(20), use_container_width=True)
 
-    with col2:
-        st.metric("Nr. coloane dupa codificare", df_codificat.shape[1])
-
-    st.write("Primele randuri:")
-    st.dataframe(df_codificat.head(20))
-
-    #descarcare
-    csv_codificat = df_codificat.to_csv(index=False).encode("utf-8")
-
+    encoded_csv = encoded_df.to_csv(index=False).encode("utf-8")
     st.download_button(
-        label="Descarca setul de date codificat",
-        data=csv_codificat,
-        file_name="date_transport_codificat.csv",
-        mime="text/csv"
+        label="Download encoded dataset",
+        data=encoded_csv,
+        file_name="encoded_transport_data.csv",
+        mime="text/csv",
+    )
+else:
+    st.warning("Select at least one column to encode.")
+
+
+st.header("5. Feature Scaling")
+available_scaling_columns = [
+    column for column in NUMERIC_ANALYSIS_COLUMNS if column in cleaned_df.columns
+]
+
+st.subheader("Available Numerical Columns")
+st.write(", ".join(available_scaling_columns))
+
+selected_scaling_columns = st.multiselect(
+    "Choose columns to scale:",
+    available_scaling_columns,
+    default=available_scaling_columns,
+)
+
+scaling_method = st.selectbox(
+    "Choose a scaling method:",
+    ["StandardScaler", "MinMaxScaler"],
+)
+
+scaled_df = cleaned_df.copy()
+if selected_scaling_columns:
+    display_scaler = build_scaler(scaling_method)
+    scaled_df[selected_scaling_columns] = display_scaler.fit_transform(
+        scaled_df[selected_scaling_columns]
     )
 
+    st.subheader("Scaling Results")
+    before_col, after_col = st.columns(2)
+
+    with before_col:
+        st.write("Before scaling:")
+        st.dataframe(cleaned_df[selected_scaling_columns].head(10), use_container_width=True)
+
+    with after_col:
+        st.write("After scaling:")
+        st.dataframe(scaled_df[selected_scaling_columns].head(10), use_container_width=True)
 else:
-    st.warning("Selecteaza cel putin o coloana.")
+    st.warning("Select at least one column to scale.")
 
-### SCALAREA DATELOR
-
-st.header("5. Metode de scalare")
-
-coloane_numerice_scalare = [
-    "Air transport, freight (million ton-km)",
-    "Railways, goods transported (million ton-km)",
-    "GDP (current US$)",
-    "Population, total"
-]
-
-coloane_numerice_scalare = [col for col in coloane_numerice_scalare if col in df_tratat.columns]
-
-st.subheader("Coloane numerice disponibile pentru scalare")
-st.write(", ".join(coloane_numerice_scalare))
-
-coloane_selectate_scalare = st.multiselect(
-    "Alege coloanele pe care vrei sa le scalezi:",
-    coloane_numerice_scalare,
-    default=coloane_numerice_scalare
+model_scaled_df = cleaned_df.copy()
+model_scaler = build_scaler(scaling_method)
+model_scaled_df[available_scaling_columns] = model_scaler.fit_transform(
+    model_scaled_df[available_scaling_columns]
 )
 
-metoda_scalare = st.selectbox(
-    "Alege metoda de scalare:",
-    ["StandardScaler", "MinMaxScaler"]
-)
 
-if coloane_selectate_scalare:
-    df_scalat = df_tratat.copy()
-
-    if metoda_scalare == "StandardScaler":
-        scaler = StandardScaler()
-    else:
-        scaler = MinMaxScaler()
-
-    df_scalat[coloane_selectate_scalare] = scaler.fit_transform(df_scalat[coloane_selectate_scalare])
-
-    st.subheader("Rezultatele scalarii")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.write("Date inainte de scalare:")
-        st.dataframe(df_tratat[coloane_selectate_scalare].head(10))
-
-    with col2:
-        st.write("Date dupa scalare:")
-        st.dataframe(df_scalat[coloane_selectate_scalare].head(10))
-
-else:
-    st.warning("Selecteaza cel putin o coloana pentru scalare.")
-
-### PRELUCRARI STATISTICE, GRUPARI SI AGREGARI DE DATE
-
-st.header("6. Prelucrari statistice, grupari si agregari pe date")
-
-#1.prelucrari statistice: count, mean, std, min, max, mediana
-st.subheader("A. Statistici descriptive generale")
-coloane_numerice = [
-    "Air transport, freight (million ton-km)",
-    "Railways, goods transported (million ton-km)",
-    "GDP (current US$)",
-    "Population, total"
+st.header("6. Descriptive Statistics, Grouping, and Aggregation")
+st.subheader("A. General Descriptive Statistics")
+available_numeric_columns = [
+    column for column in NUMERIC_ANALYSIS_COLUMNS if column in cleaned_df.columns
 ]
 
-#pastram doar coloanele care exista in setul de date
-coloane_numerice = [col for col in coloane_numerice if col in df_tratat.columns]
-
-if coloane_numerice:
-    statistici = df_tratat[coloane_numerice].describe().T.round(2)
-    st.dataframe(statistici)
+if available_numeric_columns:
+    descriptive_stats = cleaned_df[available_numeric_columns].describe().T.round(2)
+    st.dataframe(descriptive_stats, use_container_width=True)
 else:
-    st.info("Nu exista coloane numerice disponibile pentru analiza.")
+    st.info("No numerical columns are available for analysis.")
 
-#2.grupare si agregare pe date - pe an
-st.subheader("B. Evolutia in timp a transportului de marfuri")
-if "An" in df_tratat.columns:
-    agregare_an = df_tratat.groupby("An").agg({
-        "Air transport, freight (million ton-km)": "mean",
-        "Railways, goods transported (million ton-km)": "mean",
-        "GDP (current US$)": "mean",
-        "Population, total": "mean"
-    }).round(2)
+st.subheader("B. Freight Transport Evolution Over Time")
+if "Year" in cleaned_df.columns:
+    yearly_aggregation = cleaned_df.groupby("Year").agg(
+        {
+            AIR_FREIGHT: "mean",
+            RAIL_FREIGHT: "mean",
+            GDP: "mean",
+            POPULATION: "mean",
+        }
+    ).round(2)
 
-    st.write("Valorile medii anuale pentru principalii indicatori:")
-    st.dataframe(agregare_an)
+    st.write("Average yearly values for the main indicators:")
+    st.dataframe(yearly_aggregation, use_container_width=True)
 
     st.line_chart(
-        agregare_an[[
-            "Air transport, freight (million ton-km)",
-            "Railways, goods transported (million ton-km)"
-        ]]
+        yearly_aggregation[
+            [
+                AIR_FREIGHT,
+                RAIL_FREIGHT,
+            ]
+        ]
     )
 else:
-    st.info("Nu exista coloana 'An' in setul de date.")
+    st.info("The dataset does not contain a 'Year' column.")
 
-#3.grupare si agregare pe date - pe region
-st.subheader("C. Comparatia indicatorilor pe regiuni geografice")
+st.subheader("C. Indicator Comparison by Geographic Region")
+if "Region" in cleaned_df.columns:
+    regional_aggregation = cleaned_df.groupby("Region").agg(
+        {
+            AIR_FREIGHT: "mean",
+            RAIL_FREIGHT: "mean",
+            GDP: "mean",
+            POPULATION: "mean",
+        }
+    ).round(2)
 
-if "Region" in df_tratat.columns:
-    agregare_regiune = df_tratat.groupby("Region").agg({
-        "Air transport, freight (million ton-km)": "mean",
-        "Railways, goods transported (million ton-km)": "mean",
-        "GDP (current US$)": "mean",
-        "Population, total": "mean"
-    }).round(2)
+    st.write("Average values of the main indicators by region:")
+    st.dataframe(regional_aggregation, use_container_width=True)
 
-    st.write("Valorile medii ale principalilor indicatori, pe regiuni:")
-    st.dataframe(agregare_regiune)
-
-    st.write("Comparatia dintre regiunile geografice pentru transportul aerian si feroviar:")
+    st.write("Air freight and rail freight comparison by region:")
     st.bar_chart(
-        agregare_regiune[[
-            "Air transport, freight (million ton-km)",
-            "Railways, goods transported (million ton-km)"
-        ]]
+        regional_aggregation[
+            [
+                AIR_FREIGHT,
+                RAIL_FREIGHT,
+            ]
+        ]
     )
 else:
-    st.info("Nu exista coloana 'Region' in setul de date.")
+    st.info("The dataset does not contain a 'Region' column.")
 
-### FILTRARE SI SORTARE
 
-st.header("7. Filtrare si sortare dupa transportul aerian de marfa")
+st.header("7. Filtering and Sorting by Air Freight")
+filtered_df = cleaned_df.copy()
 
-df_filtrat = df_tratat.copy()
+min_air_freight = float(filtered_df[AIR_FREIGHT].min())
+max_air_freight = float(filtered_df[AIR_FREIGHT].max())
 
-#valori min si max
-min_val = float(df_filtrat["Air transport, freight (million ton-km)"].min())
-max_val = float(df_filtrat["Air transport, freight (million ton-km)"].max())
-
-#slider
-interval = st.slider(
-    "Selecteaza intervalul transportului aerian (million ton-km):",
-    min_value=min_val,
-    max_value=max_val,
-    value=(1.0, max_val)
+selected_air_freight_range = st.slider(
+    "Select the air freight interval (million ton-km):",
+    min_value=min_air_freight,
+    max_value=max_air_freight,
+    value=(1.0, max_air_freight),
 )
 
-#filtrare
-df_filtrat = df_filtrat[
-    (df_filtrat["Air transport, freight (million ton-km)"] >= interval[0]) &
-    (df_filtrat["Air transport, freight (million ton-km)"] <= interval[1])
+filtered_df = filtered_df[
+    (filtered_df[AIR_FREIGHT] >= selected_air_freight_range[0])
+    & (filtered_df[AIR_FREIGHT] <= selected_air_freight_range[1])
 ]
 
-#sortare
-ordine = st.radio(
-    "Alege ordinea:",
-    ["Descrescator", "Crescator"]
+sort_order = st.radio(
+    "Choose the sorting order:",
+    ["Descending", "Ascending"],
 )
 
-if ordine == "Descrescator":
-    df_filtrat = df_filtrat.sort_values(
-        by="Air transport, freight (million ton-km)",
-        ascending=False
-    )
-else:
-    df_filtrat = df_filtrat.sort_values(
-        by="Air transport, freight (million ton-km)",
-        ascending=True
-    )
+filtered_df = filtered_df.sort_values(
+    by=AIR_FREIGHT,
+    ascending=sort_order == "Ascending",
+)
 
-#afisare
-st.write(f"Numar observatii: {len(df_filtrat)}")
-st.dataframe(df_filtrat.head(20))
-
-### FUNCTII DE GRUP SI ANALIZA COTELOR DE PIATA
-
-st.header("8. Analiza cotelor de piata pe regiuni (Functii de grup)")
-
-# cream o copie pentru analiza
-df_group = df_tratat.copy()
-
-# calculam totalul pe regiune si an folosind transform('sum')
-df_group['Total_Regiune_An'] = df_group.groupby(['Region', 'An'])['Air transport, freight (million ton-km)'].transform('sum')
-
-# calculam ponderea % fiecarei tari in totalul regiunii sale
-df_group['Pondere_in_Regiune'] = (df_group['Air transport, freight (million ton-km)'] / df_group['Total_Regiune_An'] * 100).round(2)
-
-an_selectat = st.selectbox("Selecteaza anul pentru analiza cotelor de piata:", sorted(df_group['An'].unique(), reverse=True))
-
-df_an = df_group[df_group['An'] == an_selectat].sort_values(by='Pondere_in_Regiune', ascending=False)
-
-st.write(f"Topul tarilor cu cea mai mare influenta in transportul aerian regional in anul {an_selectat}:")
-st.dataframe(df_an[['Country Name', 'Region', 'Air transport, freight (million ton-km)', 'Pondere_in_Regiune']].head(10))
-
-fig_share = px.bar(df_an.head(15), x='Country Name', y='Pondere_in_Regiune', color='Region',
-                   title="Cota de piata a tarilor in cadrul regiunii lor (%)")
-st.plotly_chart(fig_share, use_container_width=True)
+st.write(f"Observation count: {len(filtered_df)}")
+st.dataframe(filtered_df.head(20), use_container_width=True)
 
 
-### CLUSTERIZAREA TARILOR
+st.header("8. Regional Market Share Analysis")
+market_share_df = cleaned_df.copy()
+market_share_df["Region_Year_Total"] = market_share_df.groupby(["Region", "Year"])[
+    AIR_FREIGHT
+].transform("sum")
+market_share_df["Regional_Share"] = (
+    market_share_df[AIR_FREIGHT] / market_share_df["Region_Year_Total"] * 100
+).round(2)
+
+selected_year = st.selectbox(
+    "Select the year for market share analysis:",
+    sorted(market_share_df["Year"].unique(), reverse=True),
+)
+
+year_market_share_df = market_share_df[market_share_df["Year"] == selected_year].sort_values(
+    by="Regional_Share",
+    ascending=False,
+)
+
+st.write(
+    f"Countries with the highest regional air freight share in {selected_year}:"
+)
+st.dataframe(
+    year_market_share_df[
+        ["Country Name", "Region", AIR_FREIGHT, "Regional_Share"]
+    ].head(10),
+    use_container_width=True,
+)
+
+market_share_chart = px.bar(
+    year_market_share_df.head(15),
+    x="Country Name",
+    y="Regional_Share",
+    color="Region",
+    title="Country share inside its geographic region (%)",
+)
+st.plotly_chart(market_share_chart, use_container_width=True)
 
 
-from sklearn.cluster import KMeans
+st.header("9. Country Clustering With K-Means")
+clustering_columns = [AIR_FREIGHT, RAIL_FREIGHT, GDP, POPULATION]
 
-st.header("9. Clusterizarea țărilor (K-Means)")
+kmeans = KMeans(n_clusters=3, init="k-means++", random_state=42, n_init=10)
+clusters = kmeans.fit_predict(model_scaled_df[clustering_columns])
 
-# 1. definirea coloanelor pe care s-a facut scalarea la punctul 5
-cols_pentru_cluster = [
-    "Air transport, freight (million ton-km)",
-    "Railways, goods transported (million ton-km)",
-    "GDP (current US$)",
-    "Population, total"
-]
+clustered_df = cleaned_df.copy()
+clustered_df["Cluster"] = clusters
+clustered_df["Cluster_Label"] = clustered_df["Cluster"].map(
+    lambda cluster_id: f"Cluster {cluster_id}"
+)
 
-# antrenam modelul folosind DF_SCALAT
-kmeans = KMeans(n_clusters=3, init='k-means++', random_state=42)
-# fit_predict intoarce grupul (0, 1 sau 2) pentru fiecare rând
-clustere = kmeans.fit_predict(df_scalat[cols_pentru_cluster])
+cluster_chart_df = clustered_df[
+    (clustered_df[GDP] > 0) & (clustered_df[AIR_FREIGHT] > 0)
+].copy()
 
-# adaugam eticheta clusterului in tabelul cu date REALE (df_tratat)
-# facem asta ca sa putem vedea numele tarii si PIB-ul real langa cluster
-df_tratat['Cluster'] = clustere
+cluster_colors = {
+    "Cluster 0": "#2563EB",
+    "Cluster 1": "#F97316",
+    "Cluster 2": "#10B981",
+}
 
-# vizualizare pe date reale
-fig_cluster = px.scatter(
-    df_tratat,
-    x="GDP (current US$)",
-    y="Air transport, freight (million ton-km)",
-    color="Cluster",
+cluster_scatter = px.scatter(
+    cluster_chart_df,
+    x=GDP,
+    y=AIR_FREIGHT,
+    color="Cluster_Label",
+    color_discrete_map=cluster_colors,
     hover_name="Country Name",
-    log_x=True, log_y=True,
-    title="Clusterizarea tarilor: Relatia dintre PIB si Transport Aerian"
+    log_x=True,
+    log_y=True,
+    title="Country clusters: GDP and air freight relationship",
+    labels={"Cluster_Label": "Cluster"},
+)
+cluster_scatter.update_traces(marker=dict(size=8, opacity=0.82, line=dict(width=0.7)))
+st.plotly_chart(cluster_scatter, use_container_width=True)
+
+st.subheader("Explore Countries by Cluster")
+selected_cluster = st.selectbox(
+    "Choose a cluster:",
+    sorted(clustered_df["Cluster"].unique()),
 )
 
-st.plotly_chart(fig_cluster, use_container_width=True)
+cluster_details_df = clustered_df[clustered_df["Cluster"] == selected_cluster]
 
-# tabel simplu: se alege clusterul si apar toate tarile
-st.subheader("Exploreaza tarile din fiecare grup")
-cluster_ales = st.selectbox("Alege Clusterul pe care vrei sa il vezi (0, 1 sau 2):", [0, 1, 2])
-
-# filtram tabelul sa arate doar tarile din grupul selectat
-df_vizualizare = df_tratat[df_tratat['Cluster'] == cluster_ales]
-
-st.write(f"In Clusterul {cluster_ales} au fost gasite {len(df_vizualizare)} valori:")
-st.dataframe(df_vizualizare[['Country Name', 'Region', 'GDP (current US$)', 'Air transport, freight (million ton-km)']])
+st.write(f"Cluster {selected_cluster} contains {len(cluster_details_df)} observations:")
+st.dataframe(
+    cluster_details_df[
+        ["Country Name", "Region", GDP, AIR_FREIGHT]
+    ],
+    use_container_width=True,
+)
 
 
-### REGRESIE LINIARA MULTIPLA
+st.header("10. Multiple Linear Regression")
+regression_features = [GDP, POPULATION, RAIL_FREIGHT]
+X_regression = model_scaled_df[regression_features]
+y_regression = model_scaled_df[AIR_FREIGHT]
+
+linear_model = LinearRegression()
+linear_model.fit(X_regression, y_regression)
+
+y_regression_pred = linear_model.predict(X_regression)
+r2 = r2_score(y_regression, y_regression_pred)
+
+st.write(f"**Coefficient of determination (R^2):** {r2:.4f}")
+
+st.subheader("Estimated Influence of Each Factor")
+feature_importance = pd.DataFrame(
+    {
+        "Factor": ["GDP", "Population", "Rail freight"],
+        "Coefficient": linear_model.coef_,
+    }
+).sort_values(by="Coefficient", ascending=False)
+
+st.table(feature_importance)
+
+st.info(
+    """
+    A positive coefficient means the model associates higher values of that factor
+    with higher air freight values. R^2 shows how much of the air freight variation
+    is explained by the selected factors in this in-sample educational model.
+    """
+)
 
 
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import r2_score, mean_squared_error
+st.header("11. Logistic Regression: Hub Status Prediction")
+hub_threshold = model_scaled_df[AIR_FREIGHT].quantile(0.75)
+model_scaled_df["Is_Hub"] = (model_scaled_df[AIR_FREIGHT] > hub_threshold).astype(int)
 
-st.header("10. Regresia Liniara Multipla")
+X_logistic = model_scaled_df[[GDP, POPULATION]]
+y_logistic = model_scaled_df["Is_Hub"]
 
-# X = cauzele (PIB, populație, feroviar)
-# y = efectul (transport aerian)
-cols_x = ["GDP (current US$)", "Population, total", "Railways, goods transported (million ton-km)"]
-X = df_scalat[cols_x]
-y = df_scalat['Air transport, freight (million ton-km)']
+logistic_model = LogisticRegression(max_iter=1000)
+logistic_model.fit(X_logistic, y_logistic)
 
-# construim si antrenam modelul
-model_multi = LinearRegression()
-model_multi.fit(X, y)
+y_logistic_pred = logistic_model.predict(X_logistic)
+accuracy = accuracy_score(y_logistic, y_logistic_pred)
 
+st.write(f"**In-sample model accuracy:** {accuracy:.4f}")
+st.write(
+    "The model classifies whether a country-year observation belongs to the top "
+    f"25% of air freight values with {accuracy * 100:.2f}% in-sample accuracy."
+)
 
-y_pred = model_multi.predict(X)
-r2 = r2_score(y, y_pred) # cat de bine explica variabilele din X transportul aerian
+st.write("**Confusion Matrix**")
+confusion = confusion_matrix(y_logistic, y_logistic_pred)
 
-st.write(f"**Coeficientul de determinare (R^2):** {r2:.4f}")
-
-st.subheader("Influenta fiecarui factor asupra transportului aerian")
-importanta = pd.DataFrame({
-    "Factor": ["PIB", "Populație", "Transport Feroviar"],
-    "Impact (Coeficient)": model_multi.coef_
-}).sort_values(by="Impact (Coeficient)", ascending=False)
-
-st.table(importanta)
-
-st.info("""
-**Interpretare:** - Un coeficient **pozitiv** inseamna ca, daca acel factor creste, si transportul aerian creste.
-- Valoarea R^2 ne spune ce procent din transportului aerian a fost explicat de cei 3 factori impreuna.
-""")
-
-
-### REGRESIE LOGISTICA
-
-
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, confusion_matrix
-
-st.header("11. Regresia Logistica: Predictia statutului de HUB")
-
-# cream variabila tinta (categorica)
-# hub = tara in top 25% la transportul aerian
-prag_hub = df_scalat['Air transport, freight (million ton-km)'].quantile(0.75)
-df_scalat['Este_Hub'] = (df_scalat['Air transport, freight (million ton-km)'] > prag_hub).astype(int)
-
-X_log = df_scalat[['GDP (current US$)', 'Population, total']]
-y_log = df_scalat['Este_Hub']
-
-# antrenam modelul
-model_log = LogisticRegression()
-model_log.fit(X_log, y_log)
-
-# predictia + acuratetea
-y_pred_log = model_log.predict(X_log)
-acuratete = accuracy_score(y_log, y_pred_log)
-
-st.write(f"**Acuratetea modelului:** {acuratete:.4f}")
-st.write("Interpretare: Modelul ghiceste corect daca o tara este Hub in " + f"{acuratete*100:.2f}% din cazuri.")
-
-st.write("**Matricea de Confuzie**")
-conf_matrix = confusion_matrix(y_log, y_pred_log)
-
-fig_matrix = px.imshow(
-    conf_matrix,
+confusion_chart = px.imshow(
+    confusion,
     text_auto=True,
     aspect="auto",
-    labels=dict(x="Predicție Model", y="Realitate (Date)"),
-    x=['Non-Hub', 'Hub'],
-    y=['Non-Hub', 'Hub'],
-    color_continuous_scale='Blues',
-    title="Distributia Predictiilor: Hub vs Non-Hub"
+    labels={"x": "Model prediction", "y": "Actual class"},
+    x=["Non-Hub", "Hub"],
+    y=["Non-Hub", "Hub"],
+    color_continuous_scale="Blues",
+    title="Prediction distribution: Hub vs Non-Hub",
 )
 
-fig_matrix.update_layout(
-    xaxis_title="Ce a crezut Modelul",
-    yaxis_title="Ce este în Realitate"
+confusion_chart.update_layout(
+    xaxis_title="Model prediction",
+    yaxis_title="Actual class",
 )
 
-st.plotly_chart(fig_matrix, use_container_width=True)
+st.plotly_chart(confusion_chart, use_container_width=True)
 
-from sklearn.metrics import classification_report
-
-with st.expander("Vezi Raportul de Clasificare Detaliat"):
-    # raportul sub forma de dictionar
-    report_dict = classification_report(y_log, y_pred_log, output_dict=True)
+with st.expander("Show detailed classification report"):
+    report_dict = classification_report(
+        y_logistic,
+        y_logistic_pred,
+        output_dict=True,
+        zero_division=0,
+    )
     report_df = pd.DataFrame(report_dict).transpose()
 
-    st.write("Statistici de performanta (Precision, Recall, F1-Score):")
+    st.write("Performance statistics: precision, recall, and F1-score")
     st.table(report_df.round(2))
 
-    st.info("""
-    **Ce înseamna acesti termeni?**
-    - **Precision:** Cat de sigur este modelul cand zice ca o tara e HUB.
-    - **Recall:** Cate dintre hub-urile reale a reusit modelul sa gaseasca.
-    - **F1-Score:** Media dintre Precision si Recall (nota finala a modelului pe acea grupa).
-    """)
+    st.info(
+        """
+        Precision shows how reliable the model is when it predicts a hub.
+        Recall shows how many true hubs the model identifies.
+        F1-score combines precision and recall into a single score.
+        """
+    )
